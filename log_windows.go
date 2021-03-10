@@ -1,4 +1,4 @@
-package logging
+package log
 
 // logFile is a literal thumbsuck - no idea where logs are conventionally stored
 // on Windows

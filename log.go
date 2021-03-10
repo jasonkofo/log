@@ -1,4 +1,4 @@
-package logging
+package log
 
 import (
 	"bytes"
@@ -138,6 +138,9 @@ func prefix(level Level) string {
 }
 
 func _log(l Level, format string, args ...interface{}) {
+	if len(loggers) == 0 {
+		panic("Could not log because no loggers are configured")
+	}
 	if l < level {
 		return
 	}
