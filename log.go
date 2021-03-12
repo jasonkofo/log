@@ -39,20 +39,24 @@ func SetLogLevel(l string) {
 	}
 }
 
-// File is essentially a wrapper to satisfy the io.Writer interface by using
+// file is essentially a wrapper to satisfy the io.Writer interface by using
 // Write to handle file opening and closing operations
-type File struct {
+type file struct {
 	Name string
 }
 
-func (f *File) Write(p []byte) (n int, err error) {
+type Logger struct {
+	loggers []io.Writer
+}
+
+func (f *file) Write(p []byte) (n int, err error) {
 	n = len(p)
 	return n, f.WriteMsg(string(p))
 }
 
 // WriteMsg is the internal wrapper for the interface satisfying of the logging
 // functionality
-func (f *File) WriteMsg(msg string, args ...interface{}) error {
+func (f *file) WriteMsg(msg string, args ...interface{}) error {
 	perms := os.O_APPEND | os.O_WRONLY | os.O_CREATE
 	file, err := os.OpenFile(f.Name, perms, os.ModeAppend)
 	defer file.Close()
@@ -64,9 +68,9 @@ func (f *File) WriteMsg(msg string, args ...interface{}) error {
 		}
 	} else if os.IsNotExist(err) {
 		re := regexp.MustCompile("[A-Za-z0-9." + dirDelimit + "]+" + dirDelimit)
-		dirPath := re.FindString(logFile)
+		dirPath := re.FindString(f.Name)
 		if err = os.MkdirAll(dirPath, 0744); err == nil {
-			file, err = os.OpenFile(logFile, perms, os.ModeAppend)
+			file, err = os.OpenFile(f.Name, perms, os.ModeAppend)
 		}
 		if os.IsExist(err) {
 			panic(err)
@@ -108,17 +112,18 @@ const (
 	TextMaxWidth = 100
 )
 
-var loggers []io.Writer
-
-func init() {
+// New returns a new instance of a logger object on demand
+func New(logFile string) *Logger {
+	l := Logger{}
 	// Changed because docker-compose logs are really useful
 	if runtime.GOOS != "windows" {
-		loggers = append(loggers, os.Stdout)
+		l.loggers = append(l.loggers, os.Stdout)
 	}
-	f := &File{
+	f := &file{
 		Name: logFile,
 	}
-	loggers = append(loggers, io.Writer(f))
+	l.loggers = append(l.loggers, io.Writer(f))
+	return &l
 }
 
 func prefix(level Level) string {
@@ -137,16 +142,16 @@ func prefix(level Level) string {
 	return fmt.Sprintf("%v [%v] -\t", str, char)
 }
 
-func _log(l Level, format string, args ...interface{}) {
-	if len(loggers) == 0 {
+func (l *Logger) _log(lev Level, format string, args ...interface{}) {
+	if len(l.loggers) == 0 {
 		panic("Could not log because no loggers are configured")
 	}
-	if l < level {
+	if lev < level {
 		return
 	}
-	log.SetOutput(io.MultiWriter(loggers...))
-	msg := reshape(prefix(l), fmt.Sprintf(format, args...))
-	for _, logger := range loggers {
+	log.SetOutput(io.MultiWriter(l.loggers...))
+	msg := reshape(prefix(lev), fmt.Sprintf(format, args...))
+	for _, logger := range l.loggers {
 		fmt.Fprintln(logger, msg)
 	}
 }
@@ -212,26 +217,26 @@ func reshape(prefix, text string) string {
 }
 
 // Trace issues a log with trace level
-func Trace(fmt string, args ...interface{}) {
-	_log(TraceL, fmt, args...)
+func (l *Logger) Trace(fmt string, args ...interface{}) {
+	l._log(TraceL, fmt, args...)
 }
 
 // Warn issues a log as a warning
-func Warn(fmt string, args ...interface{}) {
-	_log(Warning, fmt, args...)
+func (l *Logger) Warn(fmt string, args ...interface{}) {
+	l._log(Warning, fmt, args...)
 }
 
 // Info issues a log as information
-func Info(fmt string, args ...interface{}) {
-	_log(Information, fmt, args...)
+func (l *Logger) Info(fmt string, args ...interface{}) {
+	l._log(Information, fmt, args...)
 }
 
 // Debug issues a log as debug information
-func Debug(fmt string, args ...interface{}) {
-	_log(DebugL, fmt, args...)
+func (l *Logger) Debug(fmt string, args ...interface{}) {
+	l._log(DebugL, fmt, args...)
 }
 
 // Error issues a log as an error message
-func Error(fmt string, args ...interface{}) {
-	_log(ErrorL, fmt, args...)
+func (l *Logger) Error(fmt string, args ...interface{}) {
+	l._log(ErrorL, fmt, args...)
 }
