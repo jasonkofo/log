@@ -12,6 +12,15 @@ import (
 	"time"
 )
 
+type LogOptions uint8
+
+const (
+	LogToStdout LogOptions = 1 << iota
+	LogToFile
+	ReshapeLogs
+	DefaultLogOptions = LogToStdout | LogToFile | ReshapeLogs
+)
+
 var level Level = TraceL
 
 func any(lhs string, rhs []string) bool {
@@ -47,6 +56,7 @@ type file struct {
 
 type Logger struct {
 	loggers []io.Writer
+	options LogOptions
 }
 
 func (f *file) Write(p []byte) (n int, err error) {
@@ -112,17 +122,24 @@ const (
 	TextMaxWidth = 100
 )
 
+func NewDefault(logFile string) *Logger {
+	return New(logFile, DefaultLogOptions)
+}
+
 // New returns a new instance of a logger object on demand
-func New(logFile string) *Logger {
+func New(logFile string, options LogOptions) *Logger {
 	l := Logger{}
 	// Changed because docker-compose logs are really useful
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS != "windows" || options&LogToStdout > 0 {
 		l.loggers = append(l.loggers, os.Stdout)
 	}
-	f := &file{
-		Name: logFile,
+	if options&LogToFile > 0 {
+		f := &file{
+			Name: logFile,
+		}
+		l.loggers = append(l.loggers, io.Writer(f))
 	}
-	l.loggers = append(l.loggers, io.Writer(f))
+	l.options = options
 	return &l
 }
 
@@ -136,6 +153,8 @@ func prefix(level Level) string {
 		char = "I"
 	case Warning:
 		char = "W"
+	case DebugL:
+		char = "D"
 	default:
 		char = "E"
 	}
@@ -150,7 +169,13 @@ func (l *Logger) _log(lev Level, format string, args ...interface{}) {
 		return
 	}
 	log.SetOutput(io.MultiWriter(l.loggers...))
-	msg := reshape(prefix(lev), fmt.Sprintf(format, args...))
+	var msg string
+	fmsg := fmt.Sprintf(format, args...)
+	if l.options&ReshapeLogs > 0 {
+		msg = reshape(prefix(lev), fmsg)
+	} else {
+		msg = prefix(lev) + fmsg
+	}
 	for _, logger := range l.loggers {
 		fmt.Fprintln(logger, msg)
 	}
@@ -166,6 +191,7 @@ func reshape(prefix, text string) string {
 		words = make([][]byte, 0, len(text))
 		_text = []byte(text)
 		word  = make([]byte, 0, 15)
+		buf   bytes.Buffer
 	)
 	for i, char := range _text {
 		if char == 0x20 || char == 0xA || char == 0xD {
@@ -181,7 +207,6 @@ func reshape(prefix, text string) string {
 		}
 	}
 
-	var buf bytes.Buffer
 	// Will likely not grow very often, so safe to give a small header
 	buf.Grow(len(text) + 50)
 
