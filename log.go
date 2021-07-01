@@ -21,8 +21,6 @@ const (
 	DefaultLogOptions = LogToStdout | LogToFile | ReshapeLogs
 )
 
-var level Level = TraceL
-
 func any(lhs string, rhs []string) bool {
 	for _, item := range rhs {
 		if item == lhs {
@@ -34,18 +32,24 @@ func any(lhs string, rhs []string) bool {
 
 // SetLogLevel tries to parse the given string to figure out the desired log
 // level for the application
-func SetLogLevel(l string) {
-	if any(l, []string{"information", "info", "i", "in"}) {
-		level = Information
-	} else if any(l, []string{"warning", "warn", "w", "wa"}) {
-		level = Warning
-	} else if any(l, []string{"error", "err", "er", "e"}) {
-		level = ErrorL
-	} else if any(l, []string{"debug", "deb", "de", "d"}) {
-		level = DebugL
+func (l *Logger) SetLogLevel(_l string) {
+	if any(_l, []string{"information", "info", "i", "in"}) {
+		l.level = Information
+	} else if any(_l, []string{"warning", "warn", "w", "wa"}) {
+		l.level = Warning
+	} else if any(_l, []string{"error", "err", "er", "e"}) {
+		l.level = ErrorL
+	} else if any(_l, []string{"debug", "deb", "de", "d"}) {
+		l.level = DebugL
 	} else {
-		level = TraceL
+		l.level = TraceL
 	}
+}
+
+func (l *Logger) Write(p []byte) (n int, err error) {
+	n = len(p)
+	l.Info(string(p))
+	return n, nil
 }
 
 // file is essentially a wrapper to satisfy the io.Writer interface by using
@@ -57,6 +61,7 @@ type file struct {
 type Logger struct {
 	loggers []io.Writer
 	options LogOptions
+	level   Level
 }
 
 func (f *file) Write(p []byte) (n int, err error) {
@@ -109,10 +114,10 @@ type Level int
 const (
 	// TraceL is a trace level log
 	TraceL = iota
-	// Information level log [I]
-	Information
 	// DebugL level log [D]
 	DebugL
+	// Information level log [I]
+	Information
 	// Warning level log [W]
 	Warning
 	// ErrorL is an error level log renamed to avoid naming conflict
@@ -165,7 +170,7 @@ func (l *Logger) _log(lev Level, format string, args ...interface{}) {
 	if len(l.loggers) == 0 {
 		panic("Could not log because no loggers are configured")
 	}
-	if lev < level {
+	if lev < l.level {
 		return
 	}
 	log.SetOutput(io.MultiWriter(l.loggers...))
