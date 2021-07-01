@@ -73,8 +73,7 @@ func (f *file) Write(p []byte) (n int, err error) {
 // functionality
 func (f *file) WriteMsg(msg string, args ...interface{}) error {
 	perms := os.O_APPEND | os.O_WRONLY | os.O_CREATE
-	file, err := os.OpenFile(f.Name, perms, os.ModeAppend)
-	defer file.Close()
+	file, err := os.OpenFile(f.Name, perms, 0666)
 	if err == nil {
 		if _, err := fmt.Fprintf(file, msg+"\n", args...); err != nil {
 			fmt.Fprintln(os.Stdout, err.Error())
@@ -85,7 +84,7 @@ func (f *file) WriteMsg(msg string, args ...interface{}) error {
 		re := regexp.MustCompile("[A-Za-z0-9." + dirDelimit + "]+" + dirDelimit)
 		dirPath := re.FindString(f.Name)
 		if err = os.MkdirAll(dirPath, 0744); err == nil {
-			file, err = os.OpenFile(f.Name, perms, os.ModeAppend)
+			file, err = os.OpenFile(f.Name, perms, 0666)
 		}
 		if os.IsExist(err) {
 			panic(err)
@@ -94,10 +93,11 @@ func (f *file) WriteMsg(msg string, args ...interface{}) error {
 			panic(errMsg)
 		}
 	} else {
-		err = fmt.Errorf("Could not log to file: %v", err)
+		err = fmt.Errorf("could not log to file: %v", err)
 		fmt.Fprintln(os.Stdout, err.Error())
 		return err
 	}
+	defer file.Close()
 	// From line 39
 	if err != nil {
 		fmt.Fprintln(os.Stdout, err.Error())
